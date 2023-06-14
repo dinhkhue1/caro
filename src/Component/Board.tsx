@@ -1,69 +1,67 @@
 import React, { useState } from "react";
 import styled from "styled-components";
 import { useEffect } from "react";
-import { Button, Row, Col } from "antd";
+import { Button, Row, Col, Modal } from "antd";
 import "./Board.css";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-
-const Board = styled.div<{ size: number }>`
-  display: grid;
-  grid-template-columns: repeat(${(props) => props.size}, 50px);
-  grid-template-rows: repeat(${(props) => props.size}, 50px);
-  gap: 2px;
-
-  justify-content: center;
-`;
-
-const Cell = styled.button<{ cell: string }>`
-  background-color: #413c3c;
-  color: ${({ cell }) =>
-    cell === "X" ? "red" : cell === "O" ? "blue" : "#413c3c"};
-  border-radius: 0;
-  cursor: ${({ disabled }) => (disabled ? "not-allowed" : "pointer")};
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 2rem;
-`;
+import { Board, Cell, createInitialBoard } from "./boardStyle";
 
 interface BoardProps {
   size: number;
 }
 
-const CaroBoard: React.FC<BoardProps> = ({ size }) => {
-  // hàm tạo ra size của bảng
-  const createInitialBoard = () => {
-    const initialBoard: string[][] = [];
-    for (let i = 0; i < size; i++) {
-      initialBoard.push(Array.from({ length: size }, () => ""));
-    }
-    return initialBoard;
-  };
-  const [board, setBoard] = useState<string[][]>(createInitialBoard);
-  const [player, setPlayer] = useState<"X" | "O">("X");
-  const [winner, setWinner] = useState<string>("");
+enum Player {
+  X = "X",
+  O = "O",
+  Draw = "Draw",
+}
 
+const CaroBoard: React.FC<BoardProps> = ({ size }) => {
+  const [board, setBoard] = useState<string[][]>(createInitialBoard(size));
+
+  // const [player, setPlayer] = useState<"X" | "O">("X");
+  // const [winner, setWinner] = useState<string>("");
+  const [player, setPlayer] = useState<Player>(Player.X);
+  const [winner, setWinner] = useState<Player | null>(null);
+  const [showPopup, setShowPopup] = useState(false);
+  const [moves, setMoves] = useState<
+    { row: number; col: number; player: Player }[]
+  >([]);
+  const [currentMoveIndex, setCurrentMoveIndex] = useState<number>(0);
   useEffect(() => {
-    setBoard(createInitialBoard());
-    setPlayer("X");
-    setWinner("");
+    setBoard(createInitialBoard(size));
+    setPlayer(Player.X);
+    setWinner(null);
   }, [size]);
 
   const handleCellClick = (row: number, col: number) => {
     if (board[row][col] === "" && !winner) {
+      const clickedCell = board[row][col];
+      if (clickedCell !== "") {
+        handleUndo();
+        return;
+      }
       const updatedBoard = [...board];
       updatedBoard[row][col] = player;
       setBoard(updatedBoard);
-      setPlayer((prevPlayer) => (prevPlayer === "X" ? "O" : "X"));
+      setPlayer((prevPlayer) =>
+        prevPlayer === Player.X ? Player.O : Player.X
+      );
+      const newMove = { row, col, player };
+      setMoves((prevMoves) => [
+        ...prevMoves.slice(0, currentMoveIndex + 1),
+        newMove,
+      ]);
+      setCurrentMoveIndex((prevIndex) => prevIndex + 1);
       checkWinner(row, col);
     }
   };
-
-  const checkWinner = (row: number, col: number) => {
-    const currentPlayer = board[row][col];
-
-    // Kiểm tra hàng ngang
+  const checkRow = (
+    row: number,
+    col: number,
+    currentPlayer: string
+  ): boolean => {
     let count = 1;
     let i = 1;
     while (col - i >= 0 && board[row][col - i] === currentPlayer) {
@@ -75,15 +73,15 @@ const CaroBoard: React.FC<BoardProps> = ({ size }) => {
       count++;
       i++;
     }
-    if (count >= 5) {
-      setWinner(currentPlayer);
-      handleWin(currentPlayer);
-      return;
-    }
-
-    // Kiểm tra cột dọc
-    count = 1;
-    i = 1;
+    return count >= 5;
+  };
+  const checkCol = (
+    row: number,
+    col: number,
+    currentPlayer: string
+  ): boolean => {
+    let count = 1;
+    let i = 1;
     while (row - i >= 0 && board[row - i][col] === currentPlayer) {
       count++;
       i++;
@@ -93,15 +91,15 @@ const CaroBoard: React.FC<BoardProps> = ({ size }) => {
       count++;
       i++;
     }
-    if (count >= 5) {
-      setWinner(currentPlayer);
-      handleWin(currentPlayer);
-      return;
-    }
-
-    // Kiểm tra đường chéo chính
-    count = 1;
-    i = 1;
+    return count >= 5;
+  };
+  const checkDiagonalMain = (
+    row: number,
+    col: number,
+    currentPlayer: string
+  ): boolean => {
+    let count = 1;
+    let i = 1;
     while (
       row - i >= 0 &&
       col - i >= 0 &&
@@ -119,15 +117,16 @@ const CaroBoard: React.FC<BoardProps> = ({ size }) => {
       count++;
       i++;
     }
-    if (count >= 5) {
-      setWinner(currentPlayer);
-      handleWin(currentPlayer);
-      return;
-    }
+    return count >= 5;
+  };
 
-    // Kiểm tra đường chéo phụ
-    count = 1;
-    i = 1;
+  const checkDiagonalSub = (
+    row: number,
+    col: number,
+    currentPlayer: string
+  ): boolean => {
+    let count = 1;
+    let i = 1;
     while (
       row - i >= 0 &&
       col + i < size &&
@@ -145,16 +144,30 @@ const CaroBoard: React.FC<BoardProps> = ({ size }) => {
       count++;
       i++;
     }
-    if (count >= 5) {
-      setWinner(currentPlayer);
+    return count >= 5;
+  };
+
+  const checkDraw = (): boolean => {
+    return !board.flat().includes("");
+  };
+
+  const checkWinner = (row: number, col: number) => {
+    const currentPlayer = board[row][col];
+
+    if (
+      checkRow(row, col, currentPlayer) ||
+      checkCol(row, col, currentPlayer) ||
+      checkDiagonalMain(row, col, currentPlayer) ||
+      checkDiagonalSub(row, col, currentPlayer)
+    ) {
+      setWinner(currentPlayer as Player);
       handleWin(currentPlayer);
       return;
     }
 
-    // Kiểm tra hòa
-    if (!board.flat().includes("")) {
-      setWinner("Draw");
-      handleWin("Draw");
+    if (checkDraw()) {
+      setWinner(Player.Draw);
+      handleWin(Player.Draw);
     }
   };
 
@@ -162,52 +175,98 @@ const CaroBoard: React.FC<BoardProps> = ({ size }) => {
     setBoard(
       Array.from({ length: size }, () => Array.from({ length: size }, () => ""))
     );
-    setPlayer("X");
-    setWinner("");
+    setPlayer(Player.X);
+    setWinner(null);
+  };
+
+  const handleUndo = () => {
+    setPlayer((prevPlayer) => (prevPlayer === Player.X ? Player.O : Player.X));
+    setWinner(null);
+
+    setCurrentMoveIndex((prevIndex) => {
+      const newCurrentMoveIndex = prevIndex - 1;
+      const lastMove = moves[newCurrentMoveIndex];
+      const { row, col } = lastMove;
+
+      setBoard((prevBoard) => {
+        const newBoard = [...prevBoard];
+        newBoard[row][col] = "";
+        return newBoard;
+      });
+
+      setMoves((prevMoves) => prevMoves.slice(0, newCurrentMoveIndex));
+
+      return newCurrentMoveIndex;
+    });
   };
 
   const handleWin = (player: string) => {
-    if (player === "Draw") {
-      toast(`2 người chơi hòa nhau`, {
-        position: "top-right",
-        autoClose: 2000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-        progress: undefined,
-        theme: "light",
-      });
-    } else {
-      toast(`Người chơi ${player} đã thắng!`, {
-        position: "top-right",
-        autoClose: 2000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-        progress: undefined,
-        theme: "light",
-      });
-    }
+    setShowPopup(true);
+    // if (player === "Draw") {
+    //   toast(`2 người chơi hòa nhau`, {
+    //     position: "top-right",
+    //     autoClose: 2000,
+    //     hideProgressBar: false,
+    //     closeOnClick: true,
+    //     pauseOnHover: true,
+    //     draggable: true,
+    //     progress: undefined,
+    //     theme: "light",
+    //   });
+    // } else {
+    //   toast(`Người chơi ${player} đã thắng!`, {
+    //     position: "top-right",
+    //     autoClose: 2000,
+    //     hideProgressBar: false,
+    //     closeOnClick: true,
+    //     pauseOnHover: true,
+    //     draggable: true,
+    //     progress: undefined,
+    //     theme: "light",
+    //   });
+    // }
+  };
+
+  const handlePopupClose = () => {
+    setShowPopup(false);
+    handleReset();
   };
 
   return (
     <div>
-      <Board size={size}>
-        {board.map((row, rowIndex) =>
-          row.map((cell, colIndex) => (
-            <Cell
-              key={`${rowIndex}-${colIndex}`}
-              onClick={() => handleCellClick(rowIndex, colIndex)}
-              cell={cell}
-            >
-              {cell}
-            </Cell>
-          ))
-        )}
-      </Board>
-      {winner && (
+      <div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            marginTop: "50px",
+          }}
+        >
+          <Button
+            onClick={handleUndo}
+            disabled={currentMoveIndex <= 0}
+            style={{ background: "blue", color: "white" }}
+          >
+            Đi lại
+          </Button>
+          <div style={{ flex: "1" }}>
+            <Board size={size}>
+              {board.map((row, rowIndex) =>
+                row.map((cell, colIndex) => (
+                  <Cell
+                    key={`${rowIndex}-${colIndex}`}
+                    onClick={() => handleCellClick(rowIndex, colIndex)}
+                    cell={cell}
+                  >
+                    {cell}
+                  </Cell>
+                ))
+              )}
+            </Board>
+          </div>
+        </div>
+      </div>
+      {/* {winner && (
         <div style={{ textAlign: "center" }}>
           <ToastContainer />
           {winner === "Draw" ? (
@@ -218,6 +277,21 @@ const CaroBoard: React.FC<BoardProps> = ({ size }) => {
 
           <Button onClick={handleReset}>Reset</Button>
         </div>
+      )} */}
+
+      {showPopup && (
+        <Modal
+          title={
+            winner === "Draw" ? "Hòa nhau!" : `Người thắng: ${winner} wins`
+          }
+          visible={showPopup}
+          onCancel={handlePopupClose}
+          footer={[
+            <Button key="reset" onClick={handlePopupClose}>
+              Reset
+            </Button>,
+          ]}
+        ></Modal>
       )}
     </div>
   );
