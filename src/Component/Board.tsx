@@ -5,6 +5,28 @@ import { Button, Row, Col } from "antd";
 import "./Board.css";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+
+const Board = styled.div<{ size: number }>`
+  display: grid;
+  grid-template-columns: repeat(${(props) => props.size}, 50px);
+  grid-template-rows: repeat(${(props) => props.size}, 50px);
+  gap: 2px;
+
+  justify-content: center;
+`;
+
+const Cell = styled.button<{ cell: string }>`
+  background-color: #413c3c;
+  color: ${({ cell }) =>
+    cell === "X" ? "red" : cell === "O" ? "blue" : "#413c3c"};
+  border-radius: 0;
+  cursor: ${({ disabled }) => (disabled ? "not-allowed" : "pointer")};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+`;
+
 interface BoardProps {
   size: number;
 }
@@ -172,33 +194,19 @@ const CaroBoard: React.FC<BoardProps> = ({ size }) => {
 
   return (
     <div>
-      <div className="board">
-        <Row justify="center">
-          {board.map((row, rowIndex) => (
-            <Col span={1} key={rowIndex}>
-              {row.map((cell, colIndex) => (
-                <Button
-                  key={`${rowIndex}-${colIndex}`}
-                  onClick={() => handleCellClick(rowIndex, colIndex)}
-                  style={{
-                    width: "58px",
-                    height: "58px",
-                    fontSize: "2rem",
-                    border: "1px solid #ccc",
-                    backgroundColor: "#413c3c",
-                    borderRadius: 0,
-                    color:
-                      cell === "X" ? "red" : cell === "O" ? "blue" : "#413c3c",
-                  }}
-                  disabled={cell !== "" || winner !== ""}
-                >
-                  {cell}
-                </Button>
-              ))}
-            </Col>
-          ))}
-        </Row>
-      </div>
+      <Board size={size}>
+        {board.map((row, rowIndex) =>
+          row.map((cell, colIndex) => (
+            <Cell
+              key={`${rowIndex}-${colIndex}`}
+              onClick={() => handleCellClick(rowIndex, colIndex)}
+              cell={cell}
+            >
+              {cell}
+            </Cell>
+          ))
+        )}
+      </Board>
       {winner && (
         <div style={{ textAlign: "center" }}>
           <ToastContainer />
